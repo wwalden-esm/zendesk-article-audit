@@ -99,6 +99,8 @@
     .docx-btn { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; padding: 2px 8px; border-radius: 4px; border: 1px solid #93c5fd; background: #eff6ff; color: #1d4ed8; cursor: pointer; font-weight: 500; margin-left: 6px; vertical-align: middle; transition: all 0.15s; }
     .docx-btn:hover { background: #dbeafe; border-color: #60a5fa; }
     .docx-btn.loading { opacity: 0.5; pointer-events: none; }
+    .upload-btn { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; padding: 2px 8px; border-radius: 4px; border: 1px solid #86efac; background: #f0fdf4; color: #166534; cursor: pointer; font-weight: 500; margin-left: 3px; vertical-align: middle; transition: all 0.15s; text-decoration: none; }
+    .upload-btn:hover { background: #dcfce7; border-color: #4ade80; }
 
     .priority-badge { display: inline-block; font-size: 11px; padding: 3px 10px; border-radius: 10px; font-weight: 600; }
     .priority-critical { background: #991b1b; color: #fff; }
@@ -554,7 +556,7 @@ function renderTable() {
     }
     return `<tr>
       <td><span class="priority-badge priority-${pri}">${priLabel}</span></td>
-      <td class="title-cell"><a href="${r.html_url}" target="_blank" rel="noopener">${escapeHtml(r.title)}</a><button class="docx-btn" onclick="downloadDocx(${r.id}, this)" title="Download as Word document">&#x1F4C4; .docx</button>${releaseHtml}</td>
+      <td class="title-cell"><a href="${r.html_url}" target="_blank" rel="noopener">${escapeHtml(r.title)}</a><button class="docx-btn" onclick="downloadDocx(${r.id}, this)" title="Download as Word document">&#x1F4C4; .docx</button><a class="upload-btn" href="http://localhost:5001" target="_blank" rel="noopener" title="Open QRG Migration tool to re-upload">&#x2B06; Re-upload</a>${releaseHtml}</td>
       <td>${escapeHtml(r.category_name)}</td>
       <td>${escapeHtml(r.section_name)}</td>
       <td>${updated}</td>
@@ -604,7 +606,8 @@ function renderDuplicates(groups) {
       <div class="dup-members" id="dup-g-${i}" style="display:none">
         ${g.members.map(m => `<div class="dup-member">
           <a href="${m.html_url}" target="_blank" rel="noopener">${escapeHtml(m.title)}</a>
-          <button class="docx-btn" onclick="downloadDocx(${m.id}, this)" title="Download as Word document">&#x1F4C4; .docx</button>
+          <span class="dup-meta" style="margin-left:4px;">${escapeHtml(m.category_name || '')} &rsaquo; ${escapeHtml(m.section_name || '')}</span>
+          <button class="docx-btn" onclick="downloadDocx(${m.id}, this)" title="Download as Word document">&#x1F4C4; .docx</button><a class="upload-btn" href="http://localhost:5001" target="_blank" rel="noopener" title="Open QRG Migration tool to re-upload">&#x2B06; Re-upload</a>
         </div>`).join('')}
       </div>
     </div>`;
@@ -706,7 +709,7 @@ function renderImpactTable() {
       <td><strong>${r.days_since_update}</strong></td>
       <td>${releasesHtml}</td>
       <td>${termsHtml}</td>
-      <td><button class="docx-btn" onclick="downloadDocx(${r.id}, this)" title="Download as Word document">&#x1F4C4; .docx</button></td>
+      <td><button class="docx-btn" onclick="downloadDocx(${r.id}, this)" title="Download as Word document">&#x1F4C4; .docx</button><a class="upload-btn" href="http://localhost:5001" target="_blank" rel="noopener" title="Open QRG Migration tool to re-upload">&#x2B06; Re-upload</a></td>
     </tr>`;
   }).join('');
 }

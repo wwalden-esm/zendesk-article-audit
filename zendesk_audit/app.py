@@ -141,7 +141,7 @@ def api_scan():
                     "current": 5, "total": 6,
                 })
 
-            duplicate_groups = audit.find_duplicates(articles, on_progress=on_dup_progress)
+            duplicate_groups = audit.find_duplicates(articles, cat_map=cat_map, sec_map=sec_map, on_progress=on_dup_progress)
 
             _send_event(q, "progress", {
                 "phase": "duplicates",

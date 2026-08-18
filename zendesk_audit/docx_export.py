@@ -8,8 +8,6 @@ round-tripping through both tools preserves structure:
 
 import io
 import re
-import tempfile
-from pathlib import Path
 from urllib.parse import urlparse
 
 import requests
@@ -31,9 +29,18 @@ def fetch_article(article_id):
     return resp.json().get("article", {})
 
 
+def _is_zendesk_url(url):
+    if not audit.ZENDESK_SUBDOMAIN:
+        return False
+    return audit.ZENDESK_SUBDOMAIN in urlparse(url).hostname
+
+
 def _download_image(url):
     try:
-        r = requests.get(url, timeout=15)
+        kwargs = {"timeout": 15}
+        if _is_zendesk_url(url):
+            kwargs["auth"] = audit.zendesk_auth()
+        r = requests.get(url, **kwargs)
         if r.status_code == 200 and r.headers.get("content-type", "").startswith("image"):
             return io.BytesIO(r.content)
     except Exception:
@@ -41,7 +48,23 @@ def _download_image(url):
     return None
 
 
-def _add_inline_runs(paragraph, element):
+def _add_image(doc, src, alt=""):
+    img_stream = _download_image(src) if src.startswith("http") else None
+    if img_stream:
+        try:
+            doc.add_picture(img_stream, width=Inches(5.5))
+            last_paragraph = doc.paragraphs[-1]
+            last_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            return True
+        except Exception:
+            pass
+    p = doc.add_paragraph()
+    p.add_run(f"[Image: {alt or src}]")
+    p.style = doc.styles["Normal"]
+    return False
+
+
+def _add_inline_runs(paragraph, element, doc=None):
     if isinstance(element, NavigableString):
         text = str(element)
         if text.strip():
@@ -70,20 +93,14 @@ def _add_inline_runs(paragraph, element):
     elif tag == "br":
         paragraph.add_run("\n")
     elif tag == "img":
-        src = element.get("src", "")
-        img_stream = _download_image(src) if src.startswith("http") else None
-        if img_stream:
-            try:
-                paragraph.add_run().add_picture(img_stream, width=Inches(5.5))
-            except Exception:
-                alt = element.get("alt", src)
-                paragraph.add_run(f"[Image: {alt}]")
+        if doc:
+            _add_image(doc, element.get("src", ""), element.get("alt", ""))
         else:
-            alt = element.get("alt", src)
+            alt = element.get("alt", element.get("src", ""))
             paragraph.add_run(f"[Image: {alt}]")
     else:
         for child in element.children:
-            _add_inline_runs(paragraph, child)
+            _add_inline_runs(paragraph, child, doc=doc)
 
 
 def _process_list(doc, list_tag, indent=0):
@@ -100,8 +117,10 @@ def _process_list(doc, list_tag, indent=0):
         for child in li.children:
             if isinstance(child, Tag) and child.name in ("ul", "ol"):
                 _process_list(doc, child, indent + 1)
+            elif isinstance(child, Tag) and child.name == "img":
+                _add_image(doc, child.get("src", ""), child.get("alt", ""))
             else:
-                _add_inline_runs(p, child)
+                _add_inline_runs(p, child, doc=doc)
 
         counter += 1
 
@@ -134,6 +153,90 @@ def _process_table(doc, table_tag):
                         run.bold = True
 
 
+def _process_element(doc, element):
+    if isinstance(element, NavigableString):
+        text = str(element).strip()
+        if text:
+            doc.add_paragraph(text)
+        return
+
+    if not isinstance(element, Tag):
+        return
+
+    tag = element.name
+
+    if tag in HEADING_MAP:
+        doc.add_heading(element.get_text(strip=True), level=HEADING_MAP[tag])
+
+    elif tag == "h1":
+        doc.add_heading(element.get_text(strip=True), level=1)
+
+    elif tag == "img":
+        _add_image(doc, element.get("src", ""), element.get("alt", ""))
+
+    elif tag == "p":
+        imgs = element.find_all("img")
+        non_img_content = element.get_text(strip=True)
+        if imgs and not non_img_content:
+            for img in imgs:
+                _add_image(doc, img.get("src", ""), img.get("alt", ""))
+        else:
+            p = doc.add_paragraph()
+            for child in element.children:
+                _add_inline_runs(p, child, doc=doc)
+
+    elif tag in ("ul", "ol"):
+        _process_list(doc, element)
+
+    elif tag == "table":
+        _process_table(doc, element)
+
+    elif tag == "div":
+        cls = element.get("class", [])
+        if "callout" in cls:
+            p = doc.add_paragraph()
+            p.style = doc.styles["Normal"]
+            p.paragraph_format.left_indent = Inches(0.5)
+            run = p.add_run("⚠ ")
+            run.bold = True
+            for child in element.children:
+                _add_inline_runs(p, child, doc=doc)
+        else:
+            for child in element.children:
+                _process_element(doc, child)
+
+    elif tag == "pre":
+        p = doc.add_paragraph()
+        run = p.add_run(element.get_text())
+        run.font.name = "Consolas"
+        run.font.size = Pt(9)
+
+    elif tag == "hr":
+        p = doc.add_paragraph()
+        p.add_run("_" * 60)
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    elif tag == "blockquote":
+        p = doc.add_paragraph()
+        p.paragraph_format.left_indent = Inches(0.5)
+        p.add_run("“")
+        for child in element.children:
+            _add_inline_runs(p, child, doc=doc)
+        p.add_run("”")
+
+    elif tag == "figure":
+        img = element.find("img")
+        if img:
+            _add_image(doc, img.get("src", ""), img.get("alt", ""))
+        caption = element.find("figcaption")
+        if caption:
+            p = doc.add_paragraph()
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            run = p.add_run(caption.get_text(strip=True))
+            run.italic = True
+            run.font.size = Pt(9)
+
+
 def html_to_docx(title, html_body):
     doc = Document()
 
@@ -150,86 +253,9 @@ def html_to_docx(title, html_body):
     soup = BeautifulSoup(html_body, "html.parser")
 
     for element in soup.children:
-        if isinstance(element, NavigableString):
-            text = str(element).strip()
-            if text:
-                doc.add_paragraph(text)
-            continue
-
-        if not isinstance(element, Tag):
-            continue
-
-        tag = element.name
-
-        if tag in HEADING_MAP:
-            doc.add_heading(element.get_text(strip=True), level=HEADING_MAP[tag])
-
-        elif tag == "h1":
-            doc.add_heading(element.get_text(strip=True), level=1)
-
-        elif tag == "p":
-            p = doc.add_paragraph()
-            for child in element.children:
-                _add_inline_runs(p, child)
-
-        elif tag in ("ul", "ol"):
-            _process_list(doc, element)
-
-        elif tag == "table":
-            _process_table(doc, element)
-
-        elif tag == "div":
-            cls = element.get("class", [])
-            if "callout" in cls:
-                p = doc.add_paragraph()
-                p.style = doc.styles["Normal"]
-                p.paragraph_format.left_indent = Inches(0.5)
-                run = p.add_run("⚠ ")
-                run.bold = True
-                for child in element.children:
-                    _add_inline_runs(p, child)
-            else:
-                for child in element.children:
-                    if isinstance(child, Tag):
-                        wrapper = BeautifulSoup(str(child), "html.parser")
-                        for sub in wrapper.children:
-                            if isinstance(sub, Tag):
-                                html_to_docx_element(doc, sub)
-
-        elif tag == "pre":
-            p = doc.add_paragraph()
-            run = p.add_run(element.get_text())
-            run.font.name = "Consolas"
-            run.font.size = Pt(9)
-
-        elif tag == "hr":
-            p = doc.add_paragraph()
-            p.add_run("_" * 60)
-            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
-        elif tag == "blockquote":
-            p = doc.add_paragraph()
-            p.paragraph_format.left_indent = Inches(0.5)
-            p.add_run("“")
-            for child in element.children:
-                _add_inline_runs(p, child)
-            p.add_run("”")
+        _process_element(doc, element)
 
     return doc
-
-
-def html_to_docx_element(doc, element):
-    tag = element.name
-    if tag in HEADING_MAP:
-        doc.add_heading(element.get_text(strip=True), level=HEADING_MAP[tag])
-    elif tag == "p":
-        p = doc.add_paragraph()
-        for child in element.children:
-            _add_inline_runs(p, child)
-    elif tag in ("ul", "ol"):
-        _process_list(doc, element)
-    elif tag == "table":
-        _process_table(doc, element)
 
 
 def export_article_docx(article_id):

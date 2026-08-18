@@ -436,7 +436,9 @@ def _jaccard(set_a, set_b):
     return intersection / union if union else 0.0
 
 
-def find_duplicates(articles, on_progress=None):
+def find_duplicates(articles, cat_map=None, sec_map=None, on_progress=None):
+    cat_map = cat_map or {}
+    sec_map = sec_map or {}
     article_data = []
     total = len(articles)
     for i, article in enumerate(articles):
@@ -444,11 +446,17 @@ def find_duplicates(articles, on_progress=None):
         title_words = _extract_words(title)
         body = article.get("body", "")
         content_keywords, _ = extract_topics_from_html(body) if body else (set(), [])
+        section_id = article.get("section_id")
+        sec_info = sec_map.get(section_id, {})
+        section_name = sec_info.get("name", "Unknown")
+        category_id = sec_info.get("category_id")
+        category_name = cat_map.get(category_id, "Unknown")
         article_data.append({
             "id": article["id"],
             "title": title,
             "html_url": article.get("html_url", ""),
-            "section_id": article.get("section_id"),
+            "section_name": section_name,
+            "category_name": category_name,
             "title_words": title_words,
             "content_keywords": content_keywords,
         })
@@ -512,6 +520,8 @@ def find_duplicates(articles, on_progress=None):
                 "id": ad["id"],
                 "title": ad["title"],
                 "html_url": ad["html_url"],
+                "category_name": ad["category_name"],
+                "section_name": ad["section_name"],
             })
         group_pairs = [
             p for p in pairs
