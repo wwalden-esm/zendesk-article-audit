@@ -126,6 +126,42 @@
     .empty { text-align: center; color: #9ca3af; padding: 24px; font-size: 14px; }
     .results-count { font-size: 13px; color: #6b7280; margin-bottom: 8px; }
 
+    .dup-group { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px 16px; margin-bottom: 10px; }
+    .dup-group .dup-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; cursor: pointer; }
+    .dup-group .dup-header:hover { color: #1a56db; }
+    .dup-confidence { font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 600; text-transform: uppercase; }
+    .dup-confidence.high { background: #fef2f2; color: #991b1b; }
+    .dup-confidence.medium { background: #fef3c7; color: #92400e; }
+    .dup-members { font-size: 13px; }
+    .dup-member { padding: 6px 0; border-bottom: 1px solid #f3f4f6; display: flex; align-items: center; gap: 8px; }
+    .dup-member:last-child { border-bottom: none; }
+    .dup-member a { color: #1a56db; text-decoration: none; }
+    .dup-member a:hover { text-decoration: underline; }
+    .dup-meta { font-size: 11px; color: #9ca3af; }
+    .dup-sim-bar { display: inline-block; width: 50px; height: 6px; background: #e5e7eb; border-radius: 3px; overflow: hidden; vertical-align: middle; margin: 0 4px; }
+    .dup-sim-fill { height: 100%; border-radius: 3px; }
+    .dup-filter-bar { display: flex; gap: 10px; margin-bottom: 12px; align-items: center; }
+    .dup-filter-bar select, .dup-filter-bar input { padding: 7px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; background: #fff; }
+    .dup-filter-bar input { flex: 1; min-width: 200px; }
+    .dup-toggle { font-size: 12px; cursor: pointer; }
+
+    .impact-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .impact-table th { text-align: left; padding: 10px; background: #f9fafb; border-bottom: 2px solid #e5e7eb; font-weight: 500; color: #6b7280; white-space: nowrap; cursor: pointer; user-select: none; }
+    .impact-table th:hover { color: #374151; }
+    .impact-table td { padding: 10px; border-bottom: 1px solid #f3f4f6; vertical-align: top; }
+    .impact-table tr:hover { background: #f9fafb; }
+    .impact-table .title-cell a { color: #1a56db; text-decoration: none; }
+    .impact-table .title-cell a:hover { text-decoration: underline; }
+    .impact-release { font-size: 12px; padding: 4px 0; border-bottom: 1px dashed #f3f4f6; }
+    .impact-release:last-child { border-bottom: none; }
+    .impact-release a { color: #1a56db; text-decoration: none; font-weight: 500; }
+    .impact-release a:hover { text-decoration: underline; }
+    .impact-terms { color: #6b7280; font-size: 11px; }
+    .year-badge { display: inline-block; font-size: 10px; padding: 1px 7px; border-radius: 8px; font-weight: 600; margin-right: 4px; }
+    .year-2026 { background: #fef2f2; color: #991b1b; }
+    .year-2025 { background: #fef3c7; color: #92400e; }
+    .year-2024 { background: #e0e7ff; color: #3730a3; }
+
     .hidden { display: none; }
   </style>
 </head>
@@ -158,6 +194,57 @@
       <div id="ageSection" style="margin-top:16px;">
         <div style="font-size:13px; font-weight:500; color:#374151; margin-bottom:6px;">Last updated breakdown</div>
         <div class="age-grid" id="ageGrid"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="duplicatesSection" class="hidden">
+    <div class="card">
+      <h2>Potential Duplicates <span id="dupCount" style="font-size:13px; font-weight:400; color:#6b7280;"></span></h2>
+      <div class="dup-filter-bar">
+        <input type="text" id="dupSearchInput" placeholder="Search duplicates by title..." oninput="filterDuplicates()">
+        <select id="dupConfidenceFilter" onchange="filterDuplicates()">
+          <option value="">All confidence</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+        </select>
+      </div>
+      <div id="dupGroupsList"></div>
+    </div>
+  </div>
+
+  <div id="impactSection" class="hidden">
+    <div class="card">
+      <h2>Release Impact <span id="impactCount" style="font-size:13px; font-weight:400; color:#6b7280;"></span></h2>
+      <p style="font-size:13px; color:#6b7280; margin-bottom:12px;">Stale articles matched against release notes from 2024-2026. Shows what needs updating and which release note drives the change.</p>
+      <div class="filter-bar">
+        <input type="text" id="impactSearch" placeholder="Search by article title..." oninput="filterImpact()">
+        <select id="impactYearFilter" onchange="filterImpact()">
+          <option value="">All years</option>
+          <option value="2026">2026</option>
+          <option value="2025">2025</option>
+          <option value="2024">2024</option>
+        </select>
+        <select id="impactCategoryFilter" onchange="filterImpact()">
+          <option value="">All categories</option>
+        </select>
+        <button class="btn btn-secondary" onclick="exportImpactCsv()">Export impact CSV</button>
+      </div>
+      <div class="results-count" id="impactResultsCount"></div>
+      <div class="results-table-wrapper">
+        <table class="impact-table" id="impactTable">
+          <thead>
+            <tr>
+              <th onclick="sortImpact('title')">Article</th>
+              <th onclick="sortImpact('category_name')">Category</th>
+              <th onclick="sortImpact('days_since_update')">Days stale</th>
+              <th onclick="sortImpact('match_count')">Release notes</th>
+              <th>Matched topics</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="impactBody"></tbody>
+        </table>
       </div>
     </div>
   </div>
@@ -217,6 +304,7 @@
 <script>
 let allResults = [];
 let filteredResults = [];
+let allDuplicates = [];
 let currentSort = { key: 'priority_score', dir: 'desc' };
 let activeFilter = 'all';
 
@@ -289,6 +377,7 @@ async function loadResults() {
     if (!data.results || data.results.length === 0) return;
 
     allResults = data.results;
+    allDuplicates = data.duplicates || [];
     document.getElementById('exportBtn').style.display = '';
 
     if (data.summary) renderSummary(data.summary);
@@ -298,6 +387,17 @@ async function loadResults() {
     document.querySelector('.pill[data-filter="all"]').classList.add('active');
     applyFilters();
     document.getElementById('resultsSection').classList.remove('hidden');
+
+    if (allDuplicates.length > 0) {
+      renderDuplicates(allDuplicates);
+      document.getElementById('duplicatesSection').classList.remove('hidden');
+    }
+
+    const impactArticles = allResults.filter(r => r.release_matches && r.release_matches.length > 0);
+    if (impactArticles.length > 0) {
+      renderImpact(impactArticles);
+      document.getElementById('impactSection').classList.remove('hidden');
+    }
   } catch(e) {
     console.error(e);
   }
@@ -320,7 +420,19 @@ function renderSummary(s) {
 
   if (s.release_notes_count != null) {
     grid.innerHTML += `
-      <div class="stat-card" style="background:#dbeafe"><div class="number" style="color:#1e40af">${s.release_notes_count}</div><div class="label" style="color:#1e40af">2026 releases</div></div>
+      <div class="stat-card" style="background:#dbeafe"><div class="number" style="color:#1e40af">${s.release_notes_count}</div><div class="label" style="color:#1e40af">Release notes (3yr)</div></div>
+    `;
+    if (s.release_by_year) {
+      const years = Object.keys(s.release_by_year).sort().reverse();
+      years.forEach(y => {
+        const cls = y === '2026' ? 'danger' : y === '2025' ? 'highlight' : '';
+        grid.innerHTML += `<div class="stat-card ${cls}"><div class="number">${s.release_by_year[y]}</div><div class="label">${y} releases</div></div>`;
+      });
+    }
+  }
+  if (s.duplicate_groups != null) {
+    grid.innerHTML += `
+      <div class="stat-card" style="background:#f3e8ff"><div class="number" style="color:#6b21a8">${s.duplicate_groups}</div><div class="label" style="color:#6b21a8">Duplicate groups</div></div>
     `;
   }
 
@@ -470,6 +582,163 @@ function toggleRelease(id) {
     el.style.display = 'none';
     btn.textContent = btn.textContent.replace('▾', '▸');
   }
+}
+
+function renderDuplicates(groups) {
+  document.getElementById('dupCount').textContent = `(${groups.length} groups)`;
+  const container = document.getElementById('dupGroupsList');
+  container.innerHTML = groups.map((g, i) => {
+    const simColor = g.max_title_similarity >= 0.7 ? '#dc2626' : g.max_content_similarity >= 0.5 ? '#f59e0b' : '#6b7280';
+    const titlePct = Math.round(g.max_title_similarity * 100);
+    const contentPct = Math.round(g.max_content_similarity * 100);
+    return `<div class="dup-group" data-confidence="${g.confidence}" data-titles="${g.members.map(m => m.title.toLowerCase()).join(' ')}">
+      <div class="dup-header" onclick="toggleDupGroup('dup-g-${i}')">
+        <span class="dup-toggle" id="dup-t-${i}">&#9656;</span>
+        <span class="dup-confidence ${g.confidence}">${g.confidence}</span>
+        <strong style="font-size:13px;">${g.members.length} articles</strong>
+        <span class="dup-meta">
+          Title: <span class="dup-sim-bar"><span class="dup-sim-fill" style="width:${titlePct}%; background:${simColor};"></span></span>${titlePct}%
+          &nbsp;Content: <span class="dup-sim-bar"><span class="dup-sim-fill" style="width:${contentPct}%; background:${simColor};"></span></span>${contentPct}%
+        </span>
+      </div>
+      <div class="dup-members" id="dup-g-${i}" style="display:none">
+        ${g.members.map(m => `<div class="dup-member">
+          <a href="${m.html_url}" target="_blank" rel="noopener">${escapeHtml(m.title)}</a>
+          <button class="docx-btn" onclick="downloadDocx(${m.id}, this)" title="Download as Word document">&#x1F4C4; .docx</button>
+        </div>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleDupGroup(id) {
+  const el = document.getElementById(id);
+  const toggleId = id.replace('dup-g-', 'dup-t-');
+  const toggle = document.getElementById(toggleId);
+  if (el.style.display === 'none') {
+    el.style.display = 'block';
+    toggle.innerHTML = '&#9662;';
+  } else {
+    el.style.display = 'none';
+    toggle.innerHTML = '&#9656;';
+  }
+}
+
+let allImpactResults = [];
+let filteredImpactResults = [];
+let impactSort = { key: 'match_count', dir: 'desc' };
+
+function renderImpact(articles) {
+  allImpactResults = articles.map(r => ({
+    ...r,
+    match_count: r.release_matches.length,
+    match_years: [...new Set(r.release_matches.map(m => m.release_year))].sort().reverse(),
+    all_terms: [...new Set(r.release_matches.flatMap(m => m.matched_terms))],
+  }));
+
+  const cats = [...new Set(allImpactResults.map(r => r.category_name))].sort();
+  const catSelect = document.getElementById('impactCategoryFilter');
+  catSelect.innerHTML = '<option value="">All categories</option>' + cats.map(c => `<option value="${c}">${c}</option>`).join('');
+
+  filterImpact();
+}
+
+function filterImpact() {
+  const search = document.getElementById('impactSearch').value.toLowerCase();
+  const year = document.getElementById('impactYearFilter').value;
+  const cat = document.getElementById('impactCategoryFilter').value;
+
+  filteredImpactResults = allImpactResults.filter(r => {
+    if (search && !r.title.toLowerCase().includes(search)) return false;
+    if (cat && r.category_name !== cat) return false;
+    if (year && !r.release_matches.some(m => String(m.release_year) === year)) return false;
+    return true;
+  });
+
+  sortImpactResults();
+  renderImpactTable();
+}
+
+function sortImpact(key) {
+  if (impactSort.key === key) {
+    impactSort.dir = impactSort.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    impactSort.key = key;
+    impactSort.dir = (key === 'title' || key === 'category_name') ? 'asc' : 'desc';
+  }
+  sortImpactResults();
+  renderImpactTable();
+}
+
+function sortImpactResults() {
+  const { key, dir } = impactSort;
+  filteredImpactResults.sort((a, b) => {
+    let va = a[key], vb = b[key];
+    if (typeof va === 'string') va = va.toLowerCase();
+    if (typeof vb === 'string') vb = vb.toLowerCase();
+    if (va < vb) return dir === 'asc' ? -1 : 1;
+    if (va > vb) return dir === 'asc' ? 1 : -1;
+    return 0;
+  });
+}
+
+function renderImpactTable() {
+  document.getElementById('impactCount').textContent = `(${filteredImpactResults.length} articles impacted)`;
+  document.getElementById('impactResultsCount').textContent = `Showing ${filteredImpactResults.length} of ${allImpactResults.length} impacted articles`;
+  const body = document.getElementById('impactBody');
+
+  if (filteredImpactResults.length === 0) {
+    body.innerHTML = '<tr><td colspan="6" class="empty">No impacted articles match the current filters</td></tr>';
+    return;
+  }
+
+  body.innerHTML = filteredImpactResults.map(r => {
+    const releasesHtml = r.release_matches.map(m => {
+      const yearCls = `year-${m.release_year || 'unknown'}`;
+      return `<div class="impact-release"><span class="year-badge ${yearCls}">${m.release_year || '?'}</span><a href="${m.release_url}" target="_blank" rel="noopener">${escapeHtml(m.release_title)}</a></div>`;
+    }).join('');
+
+    const termsHtml = r.all_terms.slice(0, 6).map(t => `<span style="display:inline-block; background:#f3f4f6; padding:1px 6px; border-radius:4px; font-size:11px; margin:1px;">${escapeHtml(t)}</span>`).join('');
+
+    return `<tr>
+      <td class="title-cell"><a href="${r.html_url}" target="_blank" rel="noopener">${escapeHtml(r.title)}</a></td>
+      <td>${escapeHtml(r.category_name)}</td>
+      <td><strong>${r.days_since_update}</strong></td>
+      <td>${releasesHtml}</td>
+      <td>${termsHtml}</td>
+      <td><button class="docx-btn" onclick="downloadDocx(${r.id}, this)" title="Download as Word document">&#x1F4C4; .docx</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function exportImpactCsv() {
+  if (!filteredImpactResults.length) return;
+  let csv = 'Article,URL,Category,Section,Days Stale,Release Notes,Years,Matched Topics\n';
+  filteredImpactResults.forEach(r => {
+    const releases = r.release_matches.map(m => m.release_title).join(' | ');
+    const years = r.match_years.join(' | ');
+    const terms = r.all_terms.slice(0, 10).join(' | ');
+    csv += `"${r.title.replace(/"/g, '""')}","${r.html_url}","${r.category_name}","${r.section_name}",${r.days_since_update},"${releases}","${years}","${terms}"\n`;
+  });
+  const blob = new Blob([csv], {type: 'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'zendesk-release-impact.csv';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+function filterDuplicates() {
+  const search = document.getElementById('dupSearchInput').value.toLowerCase();
+  const conf = document.getElementById('dupConfidenceFilter').value;
+  document.querySelectorAll('.dup-group').forEach(g => {
+    const titles = g.dataset.titles;
+    const groupConf = g.dataset.confidence;
+    const matchSearch = !search || titles.includes(search);
+    const matchConf = !conf || groupConf === conf;
+    g.style.display = matchSearch && matchConf ? '' : 'none';
+  });
 }
 
 async function downloadDocx(articleId, btn) {

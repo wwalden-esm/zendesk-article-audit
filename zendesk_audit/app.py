@@ -98,17 +98,24 @@ def api_scan():
 
             _send_event(q, "progress", {
                 "phase": "releases",
-                "message": "Identifying 2026 release notes...",
+                "message": "Identifying release notes (2024-2026)...",
                 "current": 4, "total": 5,
             })
 
             cat_map = {c["id"]: c["name"] for c in categories}
             sec_map = {s["id"]: {"name": s["name"], "category_id": s.get("category_id")} for s in sections}
-            release_articles = audit.identify_release_notes(articles, cat_map, sec_map, year=2026)
+            release_articles = audit.identify_release_notes(
+                articles, cat_map, sec_map, years=[2024, 2025, 2026]
+            )
+
+            release_by_year = {}
+            for ra in release_articles:
+                y = ra.get("_release_year", 0)
+                release_by_year[y] = release_by_year.get(y, 0) + 1
 
             _send_event(q, "progress", {
                 "phase": "cross_reference",
-                "message": f"Cross-referencing {len(release_articles)} release notes against stale articles...",
+                "message": f"Cross-referencing {len(release_articles)} release notes (2024-2026) against stale articles...",
                 "current": 4, "total": 5,
             })
 
@@ -117,20 +124,47 @@ def api_scan():
 
             _send_event(q, "progress", {
                 "phase": "cross_reference",
-                "message": f"Found {impacted} stale articles impacted by 2026 releases",
-                "current": 5, "total": 5,
+                "message": f"Found {impacted} stale articles impacted by releases",
+                "current": 5, "total": 6,
+            })
+
+            _send_event(q, "progress", {
+                "phase": "duplicates",
+                "message": f"Scanning {len(articles)} articles for duplicates...",
+                "current": 5, "total": 6,
+            })
+
+            def on_dup_progress(i, total):
+                _send_event(q, "progress", {
+                    "phase": "duplicates",
+                    "message": f"Extracting keywords: {i}/{total} articles",
+                    "current": 5, "total": 6,
+                })
+
+            duplicate_groups = audit.find_duplicates(articles, on_progress=on_dup_progress)
+
+            _send_event(q, "progress", {
+                "phase": "duplicates",
+                "message": f"Found {len(duplicate_groups)} duplicate groups",
+                "current": 6, "total": 6,
             })
 
             summary = audit.compute_summary(results)
             summary["release_notes_count"] = len(release_articles)
+            summary["release_by_year"] = release_by_year
+            summary["duplicate_groups"] = len(duplicate_groups)
 
-            cached_results = {"results": results, "summary": summary}
+            cached_results = {
+                "results": results,
+                "summary": summary,
+                "duplicates": duplicate_groups,
+            }
 
             with open(RESULTS_PATH, "w", encoding="utf-8") as f:
                 json.dump(cached_results, f, indent=2, default=str)
 
             _send_event(q, "complete", {
-                "message": f"Scan complete: {len(articles)} articles analyzed, {impacted} impacted by releases",
+                "message": f"Scan complete: {len(articles)} articles analyzed, {impacted} impacted by releases, {len(duplicate_groups)} duplicate groups",
                 "summary": summary,
             })
 

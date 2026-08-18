@@ -311,7 +311,8 @@ def extract_topics_from_html(html_body):
     return keywords | bigrams, headings
 
 
-def identify_release_notes(articles, cat_map, sec_map, year=2026):
+def identify_release_notes(articles, cat_map, sec_map, year=2026, years=None):
+    target_years = set(years) if years else {year}
     release_articles = []
     for article in articles:
         section_id = article.get("section_id")
@@ -330,7 +331,8 @@ def identify_release_notes(articles, cat_map, sec_map, year=2026):
 
         try:
             dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-            if dt.year == year:
+            if dt.year in target_years:
+                article["_release_year"] = dt.year
                 release_articles.append(article)
         except (ValueError, TypeError):
             continue
@@ -356,6 +358,7 @@ def cross_reference_releases(release_articles, stale_results):
             "id": article["id"],
             "title": article.get("title", ""),
             "html_url": article.get("html_url", ""),
+            "year": article.get("_release_year", 0),
             "keywords": keywords | title_words,
             "headings": headings,
         })
@@ -400,6 +403,7 @@ def cross_reference_releases(release_articles, stale_results):
                 matching_releases.append({
                     "release_title": rel["title"],
                     "release_url": rel["html_url"],
+                    "release_year": rel["year"],
                     "matched_terms": display_terms[:8],
                     "matched_headings": heading_matches[:3],
                     "score": score,
@@ -422,6 +426,111 @@ def cross_reference_releases(release_articles, stale_results):
 
     impacted = sum(1 for r in stale_results if r.get("release_matches"))
     return impacted
+
+
+def _jaccard(set_a, set_b):
+    if not set_a or not set_b:
+        return 0.0
+    intersection = len(set_a & set_b)
+    union = len(set_a | set_b)
+    return intersection / union if union else 0.0
+
+
+def find_duplicates(articles, on_progress=None):
+    article_data = []
+    total = len(articles)
+    for i, article in enumerate(articles):
+        title = article.get("title", "")
+        title_words = _extract_words(title)
+        body = article.get("body", "")
+        content_keywords, _ = extract_topics_from_html(body) if body else (set(), [])
+        article_data.append({
+            "id": article["id"],
+            "title": title,
+            "html_url": article.get("html_url", ""),
+            "section_id": article.get("section_id"),
+            "title_words": title_words,
+            "content_keywords": content_keywords,
+        })
+        if on_progress and i % 50 == 0:
+            on_progress(i, total)
+
+    pairs = []
+    n = len(article_data)
+    for i in range(n):
+        for j in range(i + 1, n):
+            a, b = article_data[i], article_data[j]
+
+            if len(a["title_words"]) < 2 and len(b["title_words"]) < 2:
+                continue
+
+            title_sim = _jaccard(a["title_words"], b["title_words"])
+            content_sim = _jaccard(a["content_keywords"], b["content_keywords"])
+
+            if title_sim >= 0.7 or (title_sim >= 0.4 and content_sim >= 0.3) or content_sim >= 0.5:
+                confidence = "high" if title_sim >= 0.7 or content_sim >= 0.5 else "medium"
+                pairs.append({
+                    "article_a": {"id": a["id"], "title": a["title"], "html_url": a["html_url"]},
+                    "article_b": {"id": b["id"], "title": b["title"], "html_url": b["html_url"]},
+                    "title_similarity": round(title_sim, 2),
+                    "content_similarity": round(content_sim, 2),
+                    "confidence": confidence,
+                })
+
+    parent = list(range(n))
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+    def union(x, y):
+        px, py = find(x), find(y)
+        if px != py:
+            parent[px] = py
+
+    id_to_idx = {ad["id"]: idx for idx, ad in enumerate(article_data)}
+    for pair in pairs:
+        idx_a = id_to_idx[pair["article_a"]["id"]]
+        idx_b = id_to_idx[pair["article_b"]["id"]]
+        union(idx_a, idx_b)
+
+    groups_map = {}
+    for idx in range(n):
+        root = find(idx)
+        if root not in groups_map:
+            groups_map[root] = []
+        groups_map[root].append(idx)
+
+    groups = []
+    for indices in groups_map.values():
+        if len(indices) < 2:
+            continue
+        members = []
+        for idx in indices:
+            ad = article_data[idx]
+            members.append({
+                "id": ad["id"],
+                "title": ad["title"],
+                "html_url": ad["html_url"],
+            })
+        group_pairs = [
+            p for p in pairs
+            if p["article_a"]["id"] in {m["id"] for m in members}
+            and p["article_b"]["id"] in {m["id"] for m in members}
+        ]
+        best_confidence = "high" if any(p["confidence"] == "high" for p in group_pairs) else "medium"
+        max_title_sim = max((p["title_similarity"] for p in group_pairs), default=0)
+        max_content_sim = max((p["content_similarity"] for p in group_pairs), default=0)
+        groups.append({
+            "members": members,
+            "confidence": best_confidence,
+            "max_title_similarity": max_title_sim,
+            "max_content_similarity": max_content_sim,
+            "pair_count": len(group_pairs),
+        })
+
+    groups.sort(key=lambda g: (0 if g["confidence"] == "high" else 1, -g["max_title_similarity"]))
+    return groups
 
 
 def export_csv(results):
