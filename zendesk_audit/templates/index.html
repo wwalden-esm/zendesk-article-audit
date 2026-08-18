@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Zendesk Article Audit</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f7f8fa; color: #1a1a1a; line-height: 1.6; }
+    .container { max-width: 1100px; margin: 0 auto; padding: 24px 20px; }
+
+    header { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; }
+    header h1 { font-size: 22px; font-weight: 600; }
+    header .badge { background: #e8f0fe; color: #1a56db; font-size: 12px; padding: 3px 10px; border-radius: 12px; font-weight: 500; }
+
+    .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px 24px; margin-bottom: 16px; }
+    .card h2 { font-size: 15px; font-weight: 600; margin-bottom: 12px; color: #374151; }
+
+    .btn { padding: 10px 20px; border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.15s; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-primary { background: #3b82f6; color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: #2563eb; }
+    .btn-secondary { background: #fff; color: #374151; border: 1px solid #d1d5db; }
+    .btn-secondary:hover:not(:disabled) { background: #f9fafb; }
+    .btn-danger { background: #fef2f2; color: #dc2626; border: 1px solid #fca5a5; }
+    .btn-danger:hover:not(:disabled) { background: #fee2e2; }
+
+    .actions { display: flex; gap: 10px; align-items: center; }
+
+    .progress-section { display: none; margin-top: 16px; }
+    .progress-section.active { display: block; }
+    .progress-bar-wrapper { background: #e5e7eb; border-radius: 6px; height: 8px; margin-bottom: 12px; overflow: hidden; }
+    .progress-bar { background: #3b82f6; height: 100%; border-radius: 6px; transition: width 0.3s; width: 0%; }
+    .progress-bar.done { background: #10b981; }
+    .progress-text { font-size: 13px; color: #6b7280; margin-bottom: 8px; }
+    .log { background: #1e293b; color: #e2e8f0; border-radius: 8px; padding: 14px 16px; font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 13px; max-height: 200px; overflow-y: auto; line-height: 1.7; }
+    .log .error { color: #f87171; }
+    .log .success { color: #34d399; }
+    .log .info { color: #60a5fa; }
+
+    .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .stat-card { background: #f9fafb; border-radius: 8px; padding: 14px 16px; text-align: center; }
+    .stat-card .number { font-size: 28px; font-weight: 600; line-height: 1.2; }
+    .stat-card .label { font-size: 12px; color: #6b7280; margin-top: 2px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
+    .stat-card.highlight { background: #fef3c7; }
+    .stat-card.highlight .number { color: #92400e; }
+    .stat-card.danger { background: #fef2f2; }
+    .stat-card.danger .number { color: #dc2626; }
+    .stat-card.success { background: #ecfdf5; }
+    .stat-card.success .number { color: #059669; }
+
+    .age-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; }
+    .age-bar { text-align: center; }
+    .age-bar .bar-fill { height: 6px; background: #e5e7eb; border-radius: 3px; overflow: hidden; margin-bottom: 4px; }
+    .age-bar .bar-fill .fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+    .age-bar .age-label { font-size: 11px; color: #6b7280; }
+    .age-bar .age-count { font-size: 14px; font-weight: 600; }
+
+    .filter-bar { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+    .filter-bar select, .filter-bar input { padding: 7px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; background: #fff; }
+    .filter-bar input { flex: 1; min-width: 200px; }
+    .filter-bar select { min-width: 150px; }
+
+    .filter-pills { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+    .pill { padding: 4px 12px; border-radius: 14px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid #d1d5db; background: #fff; transition: all 0.15s; }
+    .pill:hover { background: #f3f4f6; }
+    .pill.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+    .pill.active-warn { background: #f59e0b; color: #fff; border-color: #f59e0b; }
+    .pill.active-danger { background: #ef4444; color: #fff; border-color: #ef4444; }
+
+    .results-table-wrapper { overflow-x: auto; }
+    .results-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .results-table th { text-align: left; padding: 10px 10px; background: #f9fafb; border-bottom: 2px solid #e5e7eb; font-weight: 500; color: #6b7280; cursor: pointer; white-space: nowrap; user-select: none; }
+    .results-table th:hover { color: #374151; }
+    .results-table th .sort-icon { font-size: 10px; margin-left: 3px; }
+    .results-table td { padding: 10px 10px; border-bottom: 1px solid #f3f4f6; }
+    .results-table tr:hover { background: #f9fafb; }
+    .results-table .title-cell { max-width: 300px; }
+    .results-table .title-cell a { color: #1a56db; text-decoration: none; }
+    .results-table .title-cell a:hover { text-decoration: underline; }
+
+    .flag-badge { display: inline-block; font-size: 10px; padding: 2px 7px; border-radius: 10px; font-weight: 500; margin: 1px 2px; }
+    .flag-stale { background: #fef3c7; color: #92400e; }
+    .flag-draft { background: #e0e7ff; color: #3730a3; }
+    .flag-outdated { background: #fef2f2; color: #991b1b; }
+    .flag-outdated_2yr { background: #fce7f3; color: #9d174d; }
+    .flag-outdated_3yr { background: #f3e8ff; color: #6b21a8; }
+    .flag-negative_votes { background: #fce7f3; color: #9d174d; }
+    .flag-no_engagement { background: #f3f4f6; color: #6b7280; }
+
+    .release-matches { margin-top: 4px; }
+    .release-match { font-size: 11px; color: #4b5563; padding: 3px 0; display: flex; align-items: baseline; gap: 6px; }
+    .release-match a { color: #1a56db; text-decoration: none; font-weight: 500; }
+    .release-match a:hover { text-decoration: underline; }
+    .release-match .match-terms { color: #9ca3af; font-size: 10px; }
+    .release-toggle { font-size: 11px; color: #3b82f6; background: none; border: none; cursor: pointer; padding: 2px 0; font-weight: 500; }
+    .release-toggle:hover { text-decoration: underline; }
+
+    .docx-btn { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; padding: 2px 8px; border-radius: 4px; border: 1px solid #93c5fd; background: #eff6ff; color: #1d4ed8; cursor: pointer; font-weight: 500; margin-left: 6px; vertical-align: middle; transition: all 0.15s; }
+    .docx-btn:hover { background: #dbeafe; border-color: #60a5fa; }
+    .docx-btn.loading { opacity: 0.5; pointer-events: none; }
+
+    .priority-badge { display: inline-block; font-size: 11px; padding: 3px 10px; border-radius: 10px; font-weight: 600; }
+    .priority-critical { background: #991b1b; color: #fff; }
+    .priority-high { background: #dc2626; color: #fff; }
+    .priority-medium { background: #f59e0b; color: #fff; }
+    .priority-low { background: #e5e7eb; color: #6b7280; }
+
+    .priority-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 16px; padding-top: 16px; border-top: 1px solid #e5e7eb; }
+    .priority-card { border-radius: 8px; padding: 10px 14px; text-align: center; }
+    .priority-card .p-count { font-size: 22px; font-weight: 600; line-height: 1.2; }
+    .priority-card .p-label { font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+    .pc-critical { background: #fef2f2; }
+    .pc-critical .p-count { color: #991b1b; }
+    .pc-critical .p-label { color: #991b1b; }
+    .pc-high { background: #fee2e2; }
+    .pc-high .p-count { color: #dc2626; }
+    .pc-high .p-label { color: #dc2626; }
+    .pc-medium { background: #fef3c7; }
+    .pc-medium .p-count { color: #92400e; }
+    .pc-medium .p-label { color: #92400e; }
+    .pc-low { background: #ecfdf5; }
+    .pc-low .p-count { color: #059669; }
+    .pc-low .p-label { color: #059669; }
+
+    .empty { text-align: center; color: #9ca3af; padding: 24px; font-size: 14px; }
+    .results-count { font-size: 13px; color: #6b7280; margin-bottom: 8px; }
+
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>Zendesk Article Audit</h1>
+    <span class="badge">Help Center</span>
+  </header>
+
+  <div class="card">
+    <h2>Scan articles</h2>
+    <p style="font-size:13px; color:#6b7280; margin-bottom:12px;">Fetches all Help Center articles and analyzes them for staleness, engagement, and status. Articles not updated in over 1 year are flagged as stale.</p>
+    <div class="actions">
+      <button class="btn btn-primary" id="scanBtn" onclick="startScan()">Scan all articles</button>
+      <button class="btn btn-secondary" id="exportBtn" onclick="exportCsv()" style="display:none">Export CSV</button>
+    </div>
+    <div class="progress-section" id="progressSection">
+      <div class="progress-text" id="progressText">Starting...</div>
+      <div class="progress-bar-wrapper"><div class="progress-bar" id="progressBar"></div></div>
+      <div class="log" id="logOutput"></div>
+    </div>
+  </div>
+
+  <div id="summarySection" class="hidden">
+    <div class="card">
+      <h2>Summary</h2>
+      <div class="summary-grid" id="summaryGrid"></div>
+      <div class="priority-row" id="priorityRow"></div>
+      <div id="ageSection" style="margin-top:16px;">
+        <div style="font-size:13px; font-weight:500; color:#374151; margin-bottom:6px;">Last updated breakdown</div>
+        <div class="age-grid" id="ageGrid"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="resultsSection" class="hidden">
+    <div class="card">
+      <h2>Articles</h2>
+      <div class="filter-bar">
+        <input type="text" id="searchInput" placeholder="Search by title..." oninput="applyFilters()">
+        <select id="categoryFilter" onchange="applyFilters()">
+          <option value="">All categories</option>
+        </select>
+        <select id="sectionFilter" onchange="applyFilters()">
+          <option value="">All sections</option>
+        </select>
+        <select id="priorityFilter" onchange="applyFilters()">
+          <option value="">All priorities</option>
+          <option value="critical">Critical</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+        </select>
+      </div>
+      <div class="filter-pills" id="filterPills">
+        <button class="pill" data-filter="all" onclick="togglePill(this)">All</button>
+        <button class="pill" data-filter="stale" onclick="togglePill(this)">Stale (1yr+)</button>
+        <button class="pill" data-filter="outdated" onclick="togglePill(this)">Outdated</button>
+        <button class="pill" data-filter="outdated_2yr" onclick="togglePill(this)">Outdated 2yr+</button>
+        <button class="pill" data-filter="outdated_3yr" onclick="togglePill(this)">Outdated 3yr+</button>
+        <button class="pill" data-filter="draft" onclick="togglePill(this)">Drafts</button>
+        <button class="pill" data-filter="negative_votes" onclick="togglePill(this)">Negative votes</button>
+        <button class="pill" data-filter="no_engagement" onclick="togglePill(this)">No engagement</button>
+      </div>
+      <div class="results-count" id="resultsCount"></div>
+      <div class="results-table-wrapper">
+        <table class="results-table" id="resultsTable">
+          <thead>
+            <tr>
+              <th onclick="sortBy('priority_score')">Priority <span class="sort-icon"></span></th>
+              <th onclick="sortBy('title')">Title <span class="sort-icon"></span></th>
+              <th onclick="sortBy('category_name')">Category <span class="sort-icon"></span></th>
+              <th onclick="sortBy('section_name')">Section <span class="sort-icon"></span></th>
+              <th onclick="sortBy('updated_at')">Last updated <span class="sort-icon"></span></th>
+              <th onclick="sortBy('days_since_update')">Days stale <span class="sort-icon"></span></th>
+              <th onclick="sortBy('vote_sum')">Votes <span class="sort-icon"></span></th>
+              <th onclick="sortBy('comment_count')">Comments <span class="sort-icon"></span></th>
+              <th>Flags</th>
+            </tr>
+          </thead>
+          <tbody id="resultsBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let allResults = [];
+let filteredResults = [];
+let currentSort = { key: 'priority_score', dir: 'desc' };
+let activeFilter = 'all';
+
+async function startScan() {
+  const btn = document.getElementById('scanBtn');
+  btn.disabled = true;
+  btn.textContent = 'Scanning...';
+
+  const ps = document.getElementById('progressSection');
+  ps.classList.add('active');
+  document.getElementById('logOutput').innerHTML = '';
+  document.getElementById('progressBar').style.width = '0%';
+  document.getElementById('progressBar').classList.remove('done');
+
+  try {
+    const res = await fetch('/api/scan', { method: 'POST' });
+    const data = await res.json();
+    if (data.error) { logLine(data.error, 'error'); btn.disabled = false; btn.textContent = 'Scan all articles'; return; }
+
+    const es = new EventSource(`/api/scan/stream/${data.run_id}`);
+    es.addEventListener('progress', e => {
+      const d = JSON.parse(e.data);
+      const pct = Math.round(((d.current + 1) / (d.total + 1)) * 100);
+      document.getElementById('progressBar').style.width = Math.min(pct, 95) + '%';
+      document.getElementById('progressText').textContent = d.message;
+      logLine(d.message, 'info');
+    });
+    es.addEventListener('complete', e => {
+      const d = JSON.parse(e.data);
+      logLine(d.message, 'success');
+      document.getElementById('progressBar').style.width = '100%';
+      document.getElementById('progressBar').classList.add('done');
+      document.getElementById('progressText').textContent = 'Done';
+      es.close();
+      btn.disabled = false;
+      btn.textContent = 'Re-scan articles';
+      loadResults();
+    });
+    es.addEventListener('error', e => {
+      if (e.data) {
+        const d = JSON.parse(e.data);
+        logLine(d.message, 'error');
+      }
+      es.close();
+      btn.disabled = false;
+      btn.textContent = 'Scan all articles';
+    });
+    es.onerror = () => {
+      es.close();
+      btn.disabled = false;
+      btn.textContent = 'Scan all articles';
+    };
+  } catch(e) {
+    logLine('Failed: ' + e.message, 'error');
+    btn.disabled = false;
+    btn.textContent = 'Scan all articles';
+  }
+}
+
+function logLine(text, cls) {
+  const log = document.getElementById('logOutput');
+  log.innerHTML += `<div class="${cls || ''}">${text}</div>`;
+  log.scrollTop = log.scrollHeight;
+}
+
+async function loadResults() {
+  try {
+    const res = await fetch('/api/results');
+    const data = await res.json();
+    if (!data.results || data.results.length === 0) return;
+
+    allResults = data.results;
+    document.getElementById('exportBtn').style.display = '';
+
+    if (data.summary) renderSummary(data.summary);
+    populateFilters();
+    activeFilter = 'all';
+    document.querySelectorAll('.pill').forEach(p => p.classList.remove('active', 'active-warn', 'active-danger'));
+    document.querySelector('.pill[data-filter="all"]').classList.add('active');
+    applyFilters();
+    document.getElementById('resultsSection').classList.remove('hidden');
+  } catch(e) {
+    console.error(e);
+  }
+}
+
+function renderSummary(s) {
+  const grid = document.getElementById('summaryGrid');
+  grid.innerHTML = `
+    <div class="stat-card"><div class="number">${s.total}</div><div class="label">Total articles</div></div>
+    <div class="stat-card danger"><div class="number">${s.stale}</div><div class="label">Stale (1yr+)</div></div>
+    <div class="stat-card highlight"><div class="number">${s.outdated}</div><div class="label">Outdated</div></div>
+    <div class="stat-card danger"><div class="number">${s.outdated_2yr || 0}</div><div class="label">Outdated 2yr+</div></div>
+    <div class="stat-card danger"><div class="number">${s.outdated_3yr || 0}</div><div class="label">Outdated 3yr+</div></div>
+    <div class="stat-card"><div class="number">${s.drafts}</div><div class="label">Drafts</div></div>
+    <div class="stat-card"><div class="number">${s.no_engagement}</div><div class="label">No engagement</div></div>
+    <div class="stat-card"><div class="number">${s.categories}</div><div class="label">Categories</div></div>
+    <div class="stat-card"><div class="number">${s.sections}</div><div class="label">Sections</div></div>
+    <div class="stat-card${s.negative_votes > 0 ? ' danger' : ''}"><div class="number">${s.negative_votes}</div><div class="label">Negative votes</div></div>
+  `;
+
+  if (s.release_notes_count != null) {
+    grid.innerHTML += `
+      <div class="stat-card" style="background:#dbeafe"><div class="number" style="color:#1e40af">${s.release_notes_count}</div><div class="label" style="color:#1e40af">2026 releases</div></div>
+    `;
+  }
+
+  const pc = s.priority_counts || {critical:0, high:0, medium:0, low:0};
+  document.getElementById('priorityRow').innerHTML = `
+    <div style="grid-column:1/-1; font-size:13px; font-weight:500; color:#374151;">Review priority</div>
+    <div class="priority-card pc-critical"><div class="p-count">${pc.critical}</div><div class="p-label">Critical</div></div>
+    <div class="priority-card pc-high"><div class="p-count">${pc.high}</div><div class="p-label">High</div></div>
+    <div class="priority-card pc-medium"><div class="p-count">${pc.medium}</div><div class="p-label">Medium</div></div>
+    <div class="priority-card pc-low"><div class="p-count">${pc.low}</div><div class="p-label">Low</div></div>
+  `;
+
+  const ageGrid = document.getElementById('ageGrid');
+  const buckets = s.age_buckets;
+  const max = Math.max(...Object.values(buckets), 1);
+  const colors = ['#10b981', '#f59e0b', '#ef4444', '#991b1b'];
+  ageGrid.innerHTML = Object.entries(buckets).map(([label, count], i) => `
+    <div class="age-bar">
+      <div class="age-count">${count}</div>
+      <div class="bar-fill"><div class="fill" style="width:${Math.round((count/max)*100)}%; background:${colors[i]};"></div></div>
+      <div class="age-label">${label}</div>
+    </div>
+  `).join('');
+
+  document.getElementById('summarySection').classList.remove('hidden');
+}
+
+function populateFilters() {
+  const cats = [...new Set(allResults.map(r => r.category_name))].sort();
+  const secs = [...new Set(allResults.map(r => r.section_name))].sort();
+
+  const catSelect = document.getElementById('categoryFilter');
+  catSelect.innerHTML = '<option value="">All categories</option>' + cats.map(c => `<option value="${c}">${c}</option>`).join('');
+
+  const secSelect = document.getElementById('sectionFilter');
+  secSelect.innerHTML = '<option value="">All sections</option>' + secs.map(s => `<option value="${s}">${s}</option>`).join('');
+}
+
+function togglePill(el) {
+  const filter = el.dataset.filter;
+  activeFilter = filter;
+  document.querySelectorAll('.pill').forEach(p => p.classList.remove('active', 'active-warn', 'active-danger'));
+  if (filter === 'stale' || filter === 'outdated' || filter === 'outdated_2yr' || filter === 'outdated_3yr' || filter === 'negative_votes') {
+    el.classList.add('active-danger');
+  } else if (filter === 'draft' || filter === 'no_engagement') {
+    el.classList.add('active-warn');
+  } else {
+    el.classList.add('active');
+  }
+  applyFilters();
+}
+
+function applyFilters() {
+  const search = document.getElementById('searchInput').value.toLowerCase();
+  const cat = document.getElementById('categoryFilter').value;
+  const sec = document.getElementById('sectionFilter').value;
+  const pri = document.getElementById('priorityFilter').value;
+
+  filteredResults = allResults.filter(r => {
+    if (search && !r.title.toLowerCase().includes(search)) return false;
+    if (cat && r.category_name !== cat) return false;
+    if (sec && r.section_name !== sec) return false;
+    if (pri && (r.priority || 'low') !== pri) return false;
+    if (activeFilter !== 'all' && !r.flags.includes(activeFilter)) return false;
+    return true;
+  });
+
+  sortResults();
+  renderTable();
+}
+
+function sortBy(key) {
+  if (currentSort.key === key) {
+    currentSort.dir = currentSort.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    currentSort.key = key;
+    currentSort.dir = (key === 'title' || key === 'category_name' || key === 'section_name') ? 'asc' : 'desc';
+  }
+  sortResults();
+  renderTable();
+}
+
+function sortResults() {
+  const { key, dir } = currentSort;
+  filteredResults.sort((a, b) => {
+    let va = a[key], vb = b[key];
+    if (typeof va === 'string') va = va.toLowerCase();
+    if (typeof vb === 'string') vb = vb.toLowerCase();
+    if (va < vb) return dir === 'asc' ? -1 : 1;
+    if (va > vb) return dir === 'asc' ? 1 : -1;
+    return 0;
+  });
+}
+
+function renderTable() {
+  const body = document.getElementById('resultsBody');
+  document.getElementById('resultsCount').textContent = `Showing ${filteredResults.length} of ${allResults.length} articles`;
+
+  if (filteredResults.length === 0) {
+    body.innerHTML = '<tr><td colspan="9" class="empty">No articles match the current filters</td></tr>';
+    return;
+  }
+
+  body.innerHTML = filteredResults.map(r => {
+    const flags = r.flags.map(f => `<span class="flag-badge flag-${f}">${f.replace('_', ' ')}</span>`).join('');
+    const updated = r.updated_at ? r.updated_at.slice(0, 10) : '—';
+    const voteDisplay = r.vote_sum > 0 ? `+${r.vote_sum}` : r.vote_sum;
+    const voteClass = r.vote_sum < 0 ? 'color:#dc2626' : r.vote_sum > 0 ? 'color:#059669' : '';
+    const pri = r.priority || 'low';
+    const priLabel = pri.charAt(0).toUpperCase() + pri.slice(1);
+    const matches = r.release_matches || [];
+    let releaseHtml = '';
+    if (matches.length) {
+      const id = 'rel-' + r.id;
+      releaseHtml = `<div class="release-matches"><button class="release-toggle" onclick="toggleRelease('${id}')">▸ ${matches.length} related release${matches.length > 1 ? 's' : ''}</button><div id="${id}" style="display:none">` +
+        matches.map(m =>
+          `<div class="release-match"><a href="${m.release_url}" target="_blank" rel="noopener">${escapeHtml(m.release_title)}</a><span class="match-terms">${m.matched_terms.slice(0,4).join(', ')}</span></div>`
+        ).join('') + '</div></div>';
+    }
+    return `<tr>
+      <td><span class="priority-badge priority-${pri}">${priLabel}</span></td>
+      <td class="title-cell"><a href="${r.html_url}" target="_blank" rel="noopener">${escapeHtml(r.title)}</a><button class="docx-btn" onclick="downloadDocx(${r.id}, this)" title="Download as Word document">&#x1F4C4; .docx</button>${releaseHtml}</td>
+      <td>${escapeHtml(r.category_name)}</td>
+      <td>${escapeHtml(r.section_name)}</td>
+      <td>${updated}</td>
+      <td><strong>${r.days_since_update}</strong></td>
+      <td style="${voteClass}">${voteDisplay} <span style="color:#9ca3af">(${r.vote_count})</span></td>
+      <td>${r.comment_count}</td>
+      <td>${flags || '<span style="color:#d1d5db">—</span>'}</td>
+    </tr>`;
+  }).join('');
+}
+
+function escapeHtml(str) {
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+function toggleRelease(id) {
+  const el = document.getElementById(id);
+  const btn = el.previousElementSibling;
+  if (el.style.display === 'none') {
+    el.style.display = 'block';
+    btn.textContent = btn.textContent.replace('▸', '▾');
+  } else {
+    el.style.display = 'none';
+    btn.textContent = btn.textContent.replace('▾', '▸');
+  }
+}
+
+async function downloadDocx(articleId, btn) {
+  btn.classList.add('loading');
+  btn.textContent = '...';
+  try {
+    const res = await fetch(`/api/article/${articleId}/docx`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert(err.error || 'Failed to export article');
+      return;
+    }
+    const blob = await res.blob();
+    const cd = res.headers.get('content-disposition') || '';
+    const match = cd.match(/filename="?([^"]+)"?/);
+    const filename = match ? match[1] : `article_${articleId}.docx`;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(a.href);
+  } catch(e) {
+    alert('Export failed: ' + e.message);
+  } finally {
+    btn.classList.remove('loading');
+    btn.innerHTML = '&#x1F4C4; .docx';
+  }
+}
+
+function exportCsv() {
+  window.location.href = '/api/export';
+}
+
+loadResults();
+</script>
+</body>
+</html>
